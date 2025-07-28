@@ -43,13 +43,22 @@
 </head>
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200">
   <div class="container mx-auto p-4 md:p-8 max-w-2xl">
-    <header class="relative text-center mb-8">
-      <h1 class="text-4xl font-bold text-gray-900 dark:text-white">🗺️ Challenge Map Rotation</h1>
-      <p class="text-gray-600 dark:text-gray-400 mt-2">Live updates for the challenge maps.</p>
-      <div id="master-notification-toggle" class="absolute top-0 right-0 p-2 cursor-pointer text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400" title="Enable/Disable Sounds">
-        <svg id="master-bell-icon" class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 00-5-5.917V5a2 2 0 10-4 0v.083A6 6 0 004 11v3.159c0 .538-.214 1.055-.595 1.436L2 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
-        <svg id="master-bell-off-icon" class="w-8 h-8 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-      </div>
+    <!-- Header with Flexbox for responsive layout -->
+    <header class="flex justify-between items-center mb-8">
+        <!-- Left spacer to balance the right icon, ensuring the title is truly centered -->
+        <div class="w-10 h-10 sm:w-12 sm:h-12"></div> 
+        
+        <!-- Title container that grows to fill available space -->
+        <div class="flex-grow text-center">
+            <h1 class="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white">🗺️ Challenge Map Rotation</h1>
+            <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-2">Live updates for the challenge maps.</p>
+        </div>
+
+        <!-- Right icon container -->
+        <div id="master-notification-toggle" class="w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center cursor-pointer text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400" title="Enable/Disable Sounds">
+            <svg id="master-bell-icon" class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 00-5-5.917V5a2 2 0 10-4 0v.083A6 6 0 004 11v3.159c0 .538-.214 1.055-.595 1.436L2 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+            <svg id="master-bell-off-icon" class="w-8 h-8 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+        </div>
     </header>
 
     <main>
