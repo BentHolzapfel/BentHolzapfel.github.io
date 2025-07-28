@@ -96,7 +96,7 @@
         minutesToNext: minutesToNext,
         mapTimes: rotation.map((map, i) => {
           const slotsAway = (i - rotationIndex + rotation.length) % rotation.length;
-
+          
           let minutesUntil;
           if (slotsAway === 0) {
             minutesUntil = minutesToNext + (rotation.length - 1) * MAP_DURATION;
@@ -122,7 +122,7 @@
         startTimeDisplayEl.textContent = startTime.toLocaleString();
         return;
       }
-
+      
       mainInfoEl.classList.remove('hidden');
       overviewBoxEl.classList.remove('hidden');
       notStartedMessageEl.classList.add('hidden');
@@ -132,7 +132,7 @@
 
       const nextMapStartTime = new Date(now.getTime() + info.minutesToNext * 60000);
 
-      currentMapEl.innerHTML = `${info.currentMap} <span class="text-base font-medium text-gray-500 dark:text-gray-400">(until ${formatTime(nextMapStartTime)})</span>`;
+      currentMapEl.innerHTML = info.currentMap;
       nextMapEl.innerHTML = `${info.nextMap} <span class="text-base font-medium text-gray-500 dark:text-gray-400">(at ${formatTime(nextMapStartTime)})</span>`;
 
       mapOverviewEl.innerHTML = "";
@@ -141,7 +141,7 @@
         .forEach(entry => {
           const li = document.createElement("li");
           li.className = "flex justify-between items-center p-3 rounded-lg transition-colors duration-200";
-
+          
           if (entry.map === info.nextMap) {
             li.classList.add("bg-indigo-50", "dark:bg-indigo-900/50");
           }
