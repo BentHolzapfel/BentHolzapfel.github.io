@@ -42,7 +42,7 @@
 
       <!-- Overview Box -->
       <div id="overview-box" class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-        <h2 class="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Full Rotation Schedule</h2>
+        <h2 class="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Upcoming Maps</h2>
         <ul id="mapOverview" class="space-y-3">
           <!-- JS will populate this -->
         </ul>
@@ -137,6 +137,7 @@
 
       mapOverviewEl.innerHTML = "";
       info.mapTimes
+        .filter(entry => entry.map !== info.currentMap) // Exclude the current map from the list
         .sort((a, b) => a.inMinutes - b.inMinutes)
         .forEach(entry => {
           const li = document.createElement("li");
