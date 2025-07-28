@@ -12,6 +12,10 @@
     body {
       font-family: 'Inter', sans-serif;
     }
+    /* Smooth transition for the progress bar */
+    #progressBar {
+      transition: width 0.5s linear;
+    }
   </style>
 </head>
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200">
@@ -24,10 +28,18 @@
     <main>
       <!-- Main Info Box -->
       <div id="main-info" class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-6">
-        <div class="flex items-center mb-4">
-          <span class="text-lg font-medium text-gray-500 dark:text-gray-400 w-32">Current Map:</span>
-          <span id="currentMap" class="text-xl font-bold text-indigo-600 dark:text-indigo-400">Loading...</span>
+        <!-- Current Map Display -->
+        <div class="mb-4">
+          <div class="flex items-baseline">
+            <span class="text-lg font-medium text-gray-500 dark:text-gray-400 w-32">Current Map:</span>
+            <span id="currentMap" class="text-xl font-bold text-indigo-600 dark:text-indigo-400">Loading...</span>
+          </div>
+          <!-- Progress Bar -->
+          <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 mt-3">
+            <div id="progressBar" class="bg-indigo-600 h-2.5 rounded-full" style="width: 0%"></div>
+          </div>
         </div>
+        <!-- Next Map Display -->
         <div class="flex items-center">
           <span class="text-lg font-medium text-gray-500 dark:text-gray-400 w-32">Next Map:</span>
           <span id="nextMap" class="text-xl font-semibold text-gray-700 dark:text-gray-300">Loading...</span>
@@ -53,64 +65,58 @@
   <script>
     // --- CONFIGURATION ---
     const rotation = ["Flying Dutchman", "Christmas Conch Street", "Goo Lagoon", "Mrs Puff's Boatcourse", "Patty Vault"];
-    const startTime = new Date("2025-07-28T21:00:00"); // The exact start time of the first map in the user's local timezone.
+    const startTime = new Date("2025-07-28T21:00:00"); // The exact start time in the user's local timezone.
+    const MAP_DURATION_MS = 15 * 60 * 1000;
 
     // --- DOM ELEMENTS ---
     const currentMapEl = document.getElementById("currentMap");
     const nextMapEl = document.getElementById("nextMap");
     const mapOverviewEl = document.getElementById("mapOverview");
+    const progressBarEl = document.getElementById("progressBar");
     const mainInfoEl = document.getElementById("main-info");
     const overviewBoxEl = document.getElementById("overview-box");
     const notStartedMessageEl = document.getElementById("not-started-message");
     const startTimeDisplayEl = document.getElementById("startTimeDisplay");
 
-    /**
-     * Formats a Date object into HH:MM format.
-     * @param {Date} date - The date to format.
-     * @returns {string} The formatted time string.
-     */
-    function formatTime(date) {
-        const hours = date.getHours().toString().padStart(2, '0');
-        const minutes = date.getMinutes().toString().padStart(2, '0');
-        return `${hours}:${minutes}`;
-    }
+    // --- GLOBAL STATE ---
+    let timerId = null; // To hold the ID of our timer
+
+    // --- HELPER FUNCTIONS ---
+    const formatTime = (date) => date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const formatTimeWithSeconds = (totalSeconds) => {
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    };
 
     /**
-     * Calculates the current and upcoming maps based on the current time.
+     * Calculates all rotation information based on the current time.
      * @param {Date} currentTime - The current time object.
-     * @returns {object|null} An object containing rotation information, or null if rotation hasn't started.
+     * @returns {object|null} An object with rotation info or null.
      */
     function getRotationInfo(currentTime) {
-      const MAP_DURATION = 15; // Duration of each map slot in minutes
-      const totalMinutes = Math.floor((currentTime.getTime() - startTime.getTime()) / (1000 * 60));
+      const elapsedMs = currentTime.getTime() - startTime.getTime();
+      if (elapsedMs < 0) return null;
 
-      if (totalMinutes < 0) return null;
-
-      const rotationIndex = Math.floor(totalMinutes / MAP_DURATION) % rotation.length;
-      const minutesIntoCurrentSlot = totalMinutes % MAP_DURATION;
-      const minutesToNext = MAP_DURATION - minutesIntoCurrentSlot;
+      const currentSlotIndex = Math.floor(elapsedMs / MAP_DURATION_MS);
+      const rotationIndex = currentSlotIndex % rotation.length;
+      
+      const timeIntoSlotMs = elapsedMs % MAP_DURATION_MS;
+      const timeRemainingMs = MAP_DURATION_MS - timeIntoSlotMs;
+      
+      const nextMapStartTime = new Date(currentTime.getTime() + timeRemainingMs);
 
       return {
         currentMap: rotation[rotationIndex],
         nextMap: rotation[(rotationIndex + 1) % rotation.length],
-        minutesToNext: minutesToNext,
-        mapTimes: rotation.map((map, i) => {
-          const slotsAway = (i - rotationIndex + rotation.length) % rotation.length;
-          
-          let minutesUntil;
-          if (slotsAway === 0) {
-            minutesUntil = minutesToNext + (rotation.length - 1) * MAP_DURATION;
-          } else {
-            minutesUntil = minutesToNext + (slotsAway - 1) * MAP_DURATION;
-          }
-
-          return { map: map, inMinutes: minutesUntil };
-        })
+        timeRemainingMs: timeRemainingMs,
+        timeIntoSlotMs: timeIntoSlotMs,
+        nextMapStartTime: nextMapStartTime,
       };
     }
 
     /**
-     * Updates the user interface with the latest map rotation data.
+     * The main function to update the entire UI. Called on load and when a map changes.
      */
     function updateUI() {
       const now = new Date();
@@ -130,38 +136,90 @@
       const info = getRotationInfo(now);
       if (!info) return;
 
-      const nextMapStartTime = new Date(now.getTime() + info.minutesToNext * 60000);
+      // Update static elements
+      currentMapEl.textContent = info.currentMap;
+      nextMapEl.innerHTML = `${info.nextMap} <span class="text-base font-medium text-gray-500 dark:text-gray-400">(at ${formatTime(info.nextMapStartTime)})</span>`;
+      
+      // Update the full schedule (which doesn't need second-by-second updates)
+      updateSchedule(info.currentMap, info.nextMap, info.timeRemainingMs);
+      
+      // Start the high-frequency timer for countdowns and progress bar
+      startSecondTimer(info);
+    }
 
-      currentMapEl.innerHTML = info.currentMap;
-      nextMapEl.innerHTML = `${info.nextMap} <span class="text-base font-medium text-gray-500 dark:text-gray-400">(at ${formatTime(nextMapStartTime)})</span>`;
+    /**
+     * Updates the list of upcoming maps.
+     */
+    function updateSchedule(currentMapName, nextMapName, timeRemainingMs) {
+        mapOverviewEl.innerHTML = "";
+        let cumulativeTimeMs = timeRemainingMs;
 
-      mapOverviewEl.innerHTML = "";
-      info.mapTimes
-        .filter(entry => entry.map !== info.currentMap) // Exclude the current map from the list
-        .sort((a, b) => a.inMinutes - b.inMinutes)
-        .forEach(entry => {
-          const li = document.createElement("li");
-          li.className = "flex justify-between items-center p-3 rounded-lg transition-colors duration-200";
-          
-          if (entry.map === info.nextMap) {
-            li.classList.add("bg-indigo-50", "dark:bg-indigo-900/50");
-          }
+        // Create a sorted list of upcoming maps
+        const currentMapIndex = rotation.indexOf(currentMapName);
+        const upcomingRotation = [];
+        for (let i = 1; i < rotation.length; i++) {
+            upcomingRotation.push(rotation[(currentMapIndex + i) % rotation.length]);
+        }
 
-          const entryStartTime = new Date(now.getTime() + entry.inMinutes * 60000);
+        upcomingRotation.forEach(map => {
+            const li = document.createElement("li");
+            li.className = "flex justify-between items-center p-3 rounded-lg transition-colors duration-200";
+            if (map === nextMapName) {
+                li.classList.add("bg-indigo-50", "dark:bg-indigo-900/50");
+            }
+            const entryStartTime = new Date(Date.now() + cumulativeTimeMs);
+            const minutesUntil = Math.ceil(cumulativeTimeMs / 60000);
 
-          li.innerHTML = `
-            <span class="font-medium text-gray-700 dark:text-gray-300">${entry.map}</span>
-            <span class="font-semibold text-gray-900 dark:text-white bg-gray-200 dark:bg-gray-700 px-3 py-1 rounded-lg text-sm">
-              in ${entry.inMinutes} min <span class="font-normal text-gray-600 dark:text-gray-400">(${formatTime(entryStartTime)})</span>
-            </span>
-          `;
-          mapOverviewEl.appendChild(li);
+            li.innerHTML = `
+                <span class="font-medium text-gray-700 dark:text-gray-300">${map}</span>
+                <span class="font-semibold text-gray-900 dark:text-white bg-gray-200 dark:bg-gray-700 px-3 py-1 rounded-lg text-sm">
+                  in ${minutesUntil} min <span class="font-normal text-gray-600 dark:text-gray-400">(${formatTime(entryStartTime)})</span>
+                </span>`;
+            mapOverviewEl.appendChild(li);
+            cumulativeTimeMs += MAP_DURATION_MS;
         });
+    }
+
+    /**
+     * Starts the per-second timer for dynamic UI elements.
+     * @param {object} initialInfo - The initial rotation info.
+     */
+    function startSecondTimer(initialInfo) {
+      if (timerId) clearTimeout(timerId); // Clear any old timer
+
+      const mapEndTime = initialInfo.nextMapStartTime.getTime();
+
+      function tick() {
+        const now = Date.now();
+        const timeRemainingMs = mapEndTime - now;
+
+        if (timeRemainingMs <= 0) {
+          updateUI(); // Time for a new map, refresh everything
+          return;
+        }
+
+        const timeRemainingSeconds = Math.floor(timeRemainingMs / 1000);
+        
+        // --- PROGRESS BAR LOGIC ---
+        // Calculate time elapsed instead of time remaining for the progress bar
+        const timeIntoSlotMs = MAP_DURATION_MS - timeRemainingMs;
+        const progressPercentage = (timeIntoSlotMs / MAP_DURATION_MS) * 100;
+
+        // Update Progress Bar
+        progressBarEl.style.width = `${progressPercentage}%`;
+
+        // Update Page Title
+        document.title = `${initialInfo.currentMap} | ${formatTimeWithSeconds(timeRemainingSeconds)} left`;
+
+        // Schedule the next tick
+        timerId = setTimeout(tick, 1000);
+      }
+
+      tick(); // Start the timer loop
     }
 
     // --- INITIALIZATION ---
     updateUI();
-    setInterval(updateUI, 30000);
   </script>
 </body>
 </html>
