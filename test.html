@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>SBTD Challenge Map Viewer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200">
+  <div class="container mx-auto p-4 md:p-8 max-w-2xl">
+    <header class="text-center mb-8">
+      <h1 class="text-4xl font-bold text-gray-900 dark:text-white">🗺️ Challenge Map Rotation</h1>
+      <p class="text-gray-600 dark:text-gray-400 mt-2">Live updates for the challenge maps.</p>
+    </header>
+
+    <main>
+      <!-- Main Info Box -->
+      <div id="main-info" class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-6">
+        <div class="flex items-center mb-4">
+          <span class="text-lg font-medium text-gray-500 dark:text-gray-400 w-32">Current Map:</span>
+          <span id="currentMap" class="text-xl font-bold text-indigo-600 dark:text-indigo-400">Loading...</span>
+        </div>
+        <div class="flex items-center">
+          <span class="text-lg font-medium text-gray-500 dark:text-gray-400 w-32">Next Map:</span>
+          <span id="nextMap" class="text-xl font-semibold text-gray-700 dark:text-gray-300">Loading...</span>
+        </div>
+      </div>
+
+      <!-- Rotation Not Started Message -->
+      <div id="not-started-message" class="hidden bg-yellow-100 dark:bg-yellow-900 border-l-4 border-yellow-500 text-yellow-700 dark:text-yellow-200 p-4 rounded-lg shadow-md mb-6" role="alert">
+        <p class="font-bold">Rotation Not Started</p>
+        <p>The map rotation is scheduled to begin at <span id="startTimeDisplay"></span>. Please check back then!</p>
+      </div>
+
+      <!-- Overview Box -->
+      <div id="overview-box" class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+        <h2 class="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Full Rotation Schedule</h2>
+        <ul id="mapOverview" class="space-y-3">
+          <!-- JS will populate this -->
+        </ul>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // --- CONFIGURATION ---
+    const rotation = ["Flying Dutchman", "Christmas Conch Street", "Goo Lagoon", "Mrs Puff's Boatcourse", "Patty Vault"];
+    const startTime = new Date("2025-07-28T21:00:00"); // The exact start time of the first map in the user's local timezone.
+
+    // --- DOM ELEMENTS ---
+    const currentMapEl = document.getElementById("currentMap");
+    const nextMapEl = document.getElementById("nextMap");
+    const mapOverviewEl = document.getElementById("mapOverview");
+    const mainInfoEl = document.getElementById("main-info");
+    const overviewBoxEl = document.getElementById("overview-box");
+    const notStartedMessageEl = document.getElementById("not-started-message");
+    const startTimeDisplayEl = document.getElementById("startTimeDisplay");
+
+    /**
+     * Formats a Date object into HH:MM format.
+     * @param {Date} date - The date to format.
+     * @returns {string} The formatted time string.
+     */
+    function formatTime(date) {
+        const hours = date.getHours().toString().padStart(2, '0');
+        const minutes = date.getMinutes().toString().padStart(2, '0');
+        return `${hours}:${minutes}`;
+    }
+
+    /**
+     * Calculates the current and upcoming maps based on the current time.
+     * @param {Date} currentTime - The current time object.
+     * @returns {object|null} An object containing rotation information, or null if rotation hasn't started.
+     */
+    function getRotationInfo(currentTime) {
+      const MAP_DURATION = 15; // Duration of each map slot in minutes
+      const totalMinutes = Math.floor((currentTime.getTime() - startTime.getTime()) / (1000 * 60));
+
+      if (totalMinutes < 0) return null;
+
+      const rotationIndex = Math.floor(totalMinutes / MAP_DURATION) % rotation.length;
+      const minutesIntoCurrentSlot = totalMinutes % MAP_DURATION;
+      const minutesToNext = MAP_DURATION - minutesIntoCurrentSlot;
+
+      return {
+        currentMap: rotation[rotationIndex],
+        nextMap: rotation[(rotationIndex + 1) % rotation.length],
+        minutesToNext: minutesToNext,
+        mapTimes: rotation.map((map, i) => {
+          const slotsAway = (i - rotationIndex + rotation.length) % rotation.length;
+
+          let minutesUntil;
+          if (slotsAway === 0) {
+            minutesUntil = minutesToNext + (rotation.length - 1) * MAP_DURATION;
+          } else {
+            minutesUntil = minutesToNext + (slotsAway - 1) * MAP_DURATION;
+          }
+
+          return { map: map, inMinutes: minutesUntil };
+        })
+      };
+    }
+
+    /**
+     * Updates the user interface with the latest map rotation data.
+     */
+    function updateUI() {
+      const now = new Date();
+
+      if (now < startTime) {
+        mainInfoEl.classList.add('hidden');
+        overviewBoxEl.classList.add('hidden');
+        notStartedMessageEl.classList.remove('hidden');
+        startTimeDisplayEl.textContent = startTime.toLocaleString();
+        return;
+      }
+
+      mainInfoEl.classList.remove('hidden');
+      overviewBoxEl.classList.remove('hidden');
+      notStartedMessageEl.classList.add('hidden');
+
+      const info = getRotationInfo(now);
+      if (!info) return;
+
+      const nextMapStartTime = new Date(now.getTime() + info.minutesToNext * 60000);
+
+      currentMapEl.innerHTML = `${info.currentMap} <span class="text-base font-medium text-gray-500 dark:text-gray-400">(until ${formatTime(nextMapStartTime)})</span>`;
+      nextMapEl.innerHTML = `${info.nextMap} <span class="text-base font-medium text-gray-500 dark:text-gray-400">(at ${formatTime(nextMapStartTime)})</span>`;
+
+      mapOverviewEl.innerHTML = "";
+      info.mapTimes
+        .sort((a, b) => a.inMinutes - b.inMinutes)
+        .forEach(entry => {
+          const li = document.createElement("li");
+          li.className = "flex justify-between items-center p-3 rounded-lg transition-colors duration-200";
+
+          if (entry.map === info.nextMap) {
+            li.classList.add("bg-indigo-50", "dark:bg-indigo-900/50");
+          }
+
+          const entryStartTime = new Date(now.getTime() + entry.inMinutes * 60000);
+
+          li.innerHTML = `
+            <span class="font-medium text-gray-700 dark:text-gray-300">${entry.map}</span>
+            <span class="font-semibold text-gray-900 dark:text-white bg-gray-200 dark:bg-gray-700 px-3 py-1 rounded-lg text-sm">
+              in ${entry.inMinutes} min <span class="font-normal text-gray-600 dark:text-gray-400">(${formatTime(entryStartTime)})</span>
+            </span>
+          `;
+          mapOverviewEl.appendChild(li);
+        });
+    }
+
+    // --- INITIALIZATION ---
+    updateUI();
+    setInterval(updateUI, 30000);
+  </script>
+</body>
+</html>
