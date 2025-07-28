@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <title>SBTD Challenge Map Viewer</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- The link for our dynamic favicon -->
+  <link id="favicon" rel="icon" href="#">
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -12,214 +14,330 @@
     body {
       font-family: 'Inter', sans-serif;
     }
-    /* Smooth transition for the progress bar */
     #progressBar {
       transition: width 0.5s linear;
+    }
+    .notification-bell {
+      cursor: pointer;
+      transition: color 0.2s ease-in-out;
+    }
+    .notification-bell:hover {
+      color: #4f46e5; /* indigo-600 */
+    }
+    .notification-bell.active {
+      color: #4f46e5; /* indigo-600 */
+    }
+    /* ARIA live region for screen readers */
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border-width: 0;
     }
   </style>
 </head>
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200">
   <div class="container mx-auto p-4 md:p-8 max-w-2xl">
-    <header class="text-center mb-8">
+    <header class="relative text-center mb-8">
       <h1 class="text-4xl font-bold text-gray-900 dark:text-white">🗺️ Challenge Map Rotation</h1>
       <p class="text-gray-600 dark:text-gray-400 mt-2">Live updates for the challenge maps.</p>
+      <div id="master-notification-toggle" class="absolute top-0 right-0 p-2 cursor-pointer text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400" title="Enable/Disable Sounds">
+        <svg id="master-bell-icon" class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 00-5-5.917V5a2 2 0 10-4 0v.083A6 6 0 004 11v3.159c0 .538-.214 1.055-.595 1.436L2 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+        <svg id="master-bell-off-icon" class="w-8 h-8 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+      </div>
     </header>
 
     <main>
-      <!-- Main Info Box -->
+      <!-- Announcer for screen readers -->
+      <div id="announcer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
       <div id="main-info" class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-6">
-        <!-- Current Map Display -->
         <div class="mb-4">
           <div class="flex items-baseline">
             <span class="text-lg font-medium text-gray-500 dark:text-gray-400 w-32">Current Map:</span>
             <span id="currentMap" class="text-xl font-bold text-indigo-600 dark:text-indigo-400">Loading...</span>
           </div>
-          <!-- Progress Bar -->
           <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 mt-3">
             <div id="progressBar" class="bg-indigo-600 h-2.5 rounded-full" style="width: 0%"></div>
           </div>
         </div>
-        <!-- Next Map Display -->
         <div class="flex items-center">
           <span class="text-lg font-medium text-gray-500 dark:text-gray-400 w-32">Next Map:</span>
           <span id="nextMap" class="text-xl font-semibold text-gray-700 dark:text-gray-300">Loading...</span>
         </div>
       </div>
 
-      <!-- Rotation Not Started Message -->
       <div id="not-started-message" class="hidden bg-yellow-100 dark:bg-yellow-900 border-l-4 border-yellow-500 text-yellow-700 dark:text-yellow-200 p-4 rounded-lg shadow-md mb-6" role="alert">
         <p class="font-bold">Rotation Not Started</p>
         <p>The map rotation is scheduled to begin at <span id="startTimeDisplay"></span>. Please check back then!</p>
       </div>
 
-      <!-- Overview Box -->
       <div id="overview-box" class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
         <h2 class="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Upcoming Maps</h2>
-        <ul id="mapOverview" class="space-y-3">
-          <!-- JS will populate this -->
-        </ul>
+        <ul id="mapOverview" class="space-y-3"></ul>
       </div>
     </main>
   </div>
 
   <script>
-    // --- CONFIGURATION ---
-    const rotation = ["Flying Dutchman", "Christmas Conch Street", "Goo Lagoon", "Mrs. Puff's Boatschool", "Patty Vault"];
-    const startTime = new Date("2025-07-28T21:00:00"); // The exact start time in the user's local timezone.
-    const MAP_DURATION_MS = 15 * 60 * 1000;
+    /**
+     * An encapsulated object for the Map Rotation Viewer application.
+     * This prevents polluting the global namespace and organizes the code.
+     */
+    const MapRotationViewer = {
+        // --- 1. CONFIGURATION & STATE ---
+        config: {
+            rotation: ["Flying Dutchman", "Christmas Conch Street", "Goo Lagoon", "Mrs Puff's Boatschool", "Patty Vault"],
+            startTime: new Date("2025-07-28T21:00:00"),
+            MAP_DURATION_MS: 15 * 60 * 1000,
+        },
+        state: {
+            timerId: null,
+            audioCtx: null,
+            notifiedMaps: [],
+            soundEnabled: false,
+            lastAnnouncedMap: null,
+        },
+        elements: {}, // To be populated in init
+        
+        // --- 2. INITIALIZATION ---
+        init() {
+            // Cache all DOM elements
+            this.elements = {
+                currentMap: document.getElementById("currentMap"),
+                nextMap: document.getElementById("nextMap"),
+                mapOverview: document.getElementById("mapOverview"),
+                progressBar: document.getElementById("progressBar"),
+                mainInfo: document.getElementById("main-info"),
+                overviewBox: document.getElementById("overview-box"),
+                notStartedMessage: document.getElementById("not-started-message"),
+                startTimeDisplay: document.getElementById("startTimeDisplay"),
+                masterNotificationToggle: document.getElementById("master-notification-toggle"),
+                masterBellIcon: document.getElementById("master-bell-icon"),
+                masterBellOffIcon: document.getElementById("master-bell-off-icon"),
+                favicon: document.getElementById("favicon"),
+                announcer: document.getElementById("announcer"),
+            };
 
-    // --- DOM ELEMENTS ---
-    const currentMapEl = document.getElementById("currentMap");
-    const nextMapEl = document.getElementById("nextMap");
-    const mapOverviewEl = document.getElementById("mapOverview");
-    const progressBarEl = document.getElementById("progressBar");
-    const mainInfoEl = document.getElementById("main-info");
-    const overviewBoxEl = document.getElementById("overview-box");
-    const notStartedMessageEl = document.getElementById("not-started-message");
-    const startTimeDisplayEl = document.getElementById("startTimeDisplay");
+            // Setup event listeners
+            this.elements.masterNotificationToggle.addEventListener('click', () => this.toggleMasterSound());
 
-    // --- GLOBAL STATE ---
-    let timerId = null; // To hold the ID of our timer
+            // Load user preferences and start the main loop
+            this.loadPreferences();
+            this.updateUI();
+        },
 
-    // --- HELPER FUNCTIONS ---
-    const formatTime = (date) => date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const formatTimeWithSeconds = (totalSeconds) => {
-        const minutes = Math.floor(totalSeconds / 60);
-        const seconds = totalSeconds % 60;
-        return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        // --- 3. CORE LOGIC ---
+        getRotationInfo(currentTime) {
+            const elapsedMs = currentTime.getTime() - this.config.startTime.getTime();
+            if (elapsedMs < 0) return null;
+
+            const currentSlotIndex = Math.floor(elapsedMs / this.config.MAP_DURATION_MS);
+            const rotationIndex = currentSlotIndex % this.config.rotation.length;
+            const timeIntoSlotMs = elapsedMs % this.config.MAP_DURATION_MS;
+            const timeRemainingMs = this.config.MAP_DURATION_MS - timeIntoSlotMs;
+            const nextMapStartTime = new Date(currentTime.getTime() + timeRemainingMs);
+
+            return {
+                currentMap: this.config.rotation[rotationIndex],
+                nextMap: this.config.rotation[(rotationIndex + 1) % this.config.rotation.length],
+                timeRemainingMs,
+                timeIntoSlotMs,
+                nextMapStartTime,
+            };
+        },
+
+        updateUI() {
+            const now = new Date();
+            if (now < this.config.startTime) {
+                this.elements.mainInfo.classList.add('hidden');
+                this.elements.overviewBox.classList.add('hidden');
+                this.elements.notStartedMessage.classList.remove('hidden');
+                this.elements.startTimeDisplay.textContent = this.config.startTime.toLocaleString();
+                return;
+            }
+
+            this.elements.mainInfo.classList.remove('hidden');
+            this.elements.overviewBox.classList.remove('hidden');
+            this.elements.notStartedMessage.classList.add('hidden');
+
+            const info = this.getRotationInfo(now);
+            if (!info) return;
+
+            // Announce new map to screen readers if it changed
+            if (this.state.lastAnnouncedMap !== info.currentMap) {
+                this.elements.announcer.textContent = `Current map is now ${info.currentMap}`;
+                this.state.lastAnnouncedMap = info.currentMap;
+            }
+
+            this.elements.currentMap.textContent = info.currentMap;
+            this.elements.nextMap.innerHTML = `${info.nextMap} <span class="text-base font-medium text-gray-500 dark:text-gray-400">(at ${this.formatTime(info.nextMapStartTime)})</span>`;
+            
+            this.updateSchedule(info.currentMap, info.nextMap, info.timeRemainingMs);
+            this.startSecondTimer(info);
+        },
+
+        startSecondTimer(initialInfo) {
+            if (this.state.timerId) clearTimeout(this.state.timerId);
+            const mapEndTime = initialInfo.nextMapStartTime.getTime();
+
+            const tick = () => {
+                const now = Date.now();
+                const timeRemainingMs = mapEndTime - now;
+
+                if (timeRemainingMs <= 0) {
+                    if (this.state.notifiedMaps.includes(initialInfo.nextMap)) {
+                        this.playNotificationSound();
+                    }
+                    this.updateUI(); // Refresh everything for the new map
+                    return;
+                }
+
+                const timeIntoSlotMs = this.config.MAP_DURATION_MS - timeRemainingMs;
+                const progress = timeIntoSlotMs / this.config.MAP_DURATION_MS;
+
+                // Update dynamic elements
+                this.elements.progressBar.style.width = `${progress * 100}%`;
+                this.updateFavicon(progress);
+                document.title = `${initialInfo.currentMap} | ${this.formatTimeWithSeconds(Math.floor(timeRemainingMs / 1000))} left`;
+
+                this.state.timerId = setTimeout(tick, 1000);
+            };
+            tick();
+        },
+
+        // --- 4. UI & UX HELPERS ---
+        updateSchedule(currentMapName, nextMapName, timeRemainingMs) {
+            this.elements.mapOverview.innerHTML = "";
+            let cumulativeTimeMs = timeRemainingMs;
+            const currentMapIndex = this.config.rotation.indexOf(currentMapName);
+            const upcomingRotation = Array.from({ length: this.config.rotation.length - 1 }, (_, i) => this.config.rotation[(currentMapIndex + i + 1) % this.config.rotation.length]);
+
+            upcomingRotation.forEach(map => {
+                const li = document.createElement("li");
+                li.className = "flex justify-between items-center p-3 rounded-lg transition-colors duration-200";
+                if (map === nextMapName) li.classList.add("bg-indigo-50", "dark:bg-indigo-900/50");
+
+                const entryStartTime = new Date(Date.now() + cumulativeTimeMs);
+                const minutesUntil = Math.ceil(cumulativeTimeMs / 60000);
+
+                const textSpan = `<span class="font-medium text-gray-700 dark:text-gray-300">${map}</span>`;
+                const timeSpan = `<span class="font-semibold text-gray-900 dark:text-white bg-gray-200 dark:bg-gray-700 px-3 py-1 rounded-lg text-sm">in ${minutesUntil} min <span class="font-normal text-gray-600 dark:text-gray-400">(${this.formatTime(entryStartTime)})</span></span>`;
+                
+                const bellIcon = document.createElement('span');
+                bellIcon.className = 'notification-bell text-gray-300 dark:text-gray-600 ml-4';
+                if (this.state.notifiedMaps.includes(map)) bellIcon.classList.add('active');
+                bellIcon.innerHTML = `<svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z"></path></svg>`;
+                bellIcon.onclick = () => this.toggleMapNotification(map, bellIcon);
+
+                li.innerHTML = `<div class="flex-grow">${textSpan}</div><div class="flex items-center">${timeSpan}</div>`;
+                li.appendChild(bellIcon);
+                this.elements.mapOverview.appendChild(li);
+                cumulativeTimeMs += this.config.MAP_DURATION_MS;
+            });
+        },
+        
+        updateFavicon(progress) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 32;
+            canvas.height = 32;
+            const ctx = canvas.getContext('2d');
+            
+            const endAngle = (2 * Math.PI * progress) - (Math.PI / 2);
+
+            // Background circle
+            ctx.beginPath();
+            ctx.arc(16, 16, 14, 0, 2 * Math.PI);
+            ctx.fillStyle = '#e0e7ff'; // indigo-100
+            ctx.fill();
+            
+            // Progress arc
+            ctx.beginPath();
+            ctx.moveTo(16, 16);
+            ctx.arc(16, 16, 14, -Math.PI / 2, endAngle);
+            ctx.closePath();
+            ctx.fillStyle = '#4f46e5'; // indigo-600
+            ctx.fill();
+
+            this.elements.favicon.href = canvas.toDataURL('image/png');
+        },
+
+        // --- 5. NOTIFICATION & PREFERENCES ---
+        loadPreferences() {
+            try {
+                const savedMaps = localStorage.getItem('notifiedMaps');
+                if (savedMaps) this.state.notifiedMaps = JSON.parse(savedMaps);
+                this.state.soundEnabled = localStorage.getItem('soundEnabled') === 'true';
+            } catch (e) {
+                console.warn("Could not load preferences from localStorage. It might be disabled.", e);
+            }
+            this.updateMasterBellIcon();
+        },
+
+        savePreferences() {
+            try {
+                localStorage.setItem('notifiedMaps', JSON.stringify(this.state.notifiedMaps));
+                localStorage.setItem('soundEnabled', this.state.soundEnabled);
+            } catch (e) {
+                console.warn("Could not save preferences to localStorage. It might be disabled.", e);
+            }
+        },
+
+        playNotificationSound() {
+            if (!this.state.soundEnabled || !this.state.audioCtx) return;
+            const o = this.state.audioCtx.createOscillator();
+            const g = this.state.audioCtx.createGain();
+            o.connect(g);
+            g.connect(this.state.audioCtx.destination);
+            o.type = 'sine';
+            o.frequency.setValueAtTime(880, this.state.audioCtx.currentTime);
+            g.gain.setValueAtTime(0.5, this.state.audioCtx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.0001, this.state.audioCtx.currentTime + 0.5);
+            o.start();
+            o.stop(this.state.audioCtx.currentTime + 0.5);
+        },
+        
+        toggleMasterSound() {
+            if (!this.state.audioCtx) {
+                this.state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            this.state.soundEnabled = !this.state.soundEnabled;
+            this.updateMasterBellIcon();
+            this.savePreferences();
+            if (this.state.soundEnabled) this.playNotificationSound();
+        },
+
+        toggleMapNotification(mapName, bellElement) {
+            const index = this.state.notifiedMaps.indexOf(mapName);
+            if (index > -1) {
+                this.state.notifiedMaps.splice(index, 1);
+                bellElement.classList.remove('active');
+            } else {
+                this.state.notifiedMaps.push(mapName);
+                bellElement.classList.add('active');
+            }
+            this.savePreferences();
+        },
+
+        updateMasterBellIcon() {
+            this.elements.masterBellIcon.classList.toggle('hidden', !this.state.soundEnabled);
+            this.elements.masterBellOffIcon.classList.toggle('hidden', this.state.soundEnabled);
+        },
+
+        // --- 6. FORMATTERS ---
+        formatTime: (date) => date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        formatTimeWithSeconds: (s) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`,
     };
 
-    /**
-     * Calculates all rotation information based on the current time.
-     * @param {Date} currentTime - The current time object.
-     * @returns {object|null} An object with rotation info or null.
-     */
-    function getRotationInfo(currentTime) {
-      const elapsedMs = currentTime.getTime() - startTime.getTime();
-      if (elapsedMs < 0) return null;
-
-      const currentSlotIndex = Math.floor(elapsedMs / MAP_DURATION_MS);
-      const rotationIndex = currentSlotIndex % rotation.length;
-      
-      const timeIntoSlotMs = elapsedMs % MAP_DURATION_MS;
-      const timeRemainingMs = MAP_DURATION_MS - timeIntoSlotMs;
-      
-      const nextMapStartTime = new Date(currentTime.getTime() + timeRemainingMs);
-
-      return {
-        currentMap: rotation[rotationIndex],
-        nextMap: rotation[(rotationIndex + 1) % rotation.length],
-        timeRemainingMs: timeRemainingMs,
-        timeIntoSlotMs: timeIntoSlotMs,
-        nextMapStartTime: nextMapStartTime,
-      };
-    }
-
-    /**
-     * The main function to update the entire UI. Called on load and when a map changes.
-     */
-    function updateUI() {
-      const now = new Date();
-
-      if (now < startTime) {
-        mainInfoEl.classList.add('hidden');
-        overviewBoxEl.classList.add('hidden');
-        notStartedMessageEl.classList.remove('hidden');
-        startTimeDisplayEl.textContent = startTime.toLocaleString();
-        return;
-      }
-      
-      mainInfoEl.classList.remove('hidden');
-      overviewBoxEl.classList.remove('hidden');
-      notStartedMessageEl.classList.add('hidden');
-
-      const info = getRotationInfo(now);
-      if (!info) return;
-
-      // Update static elements
-      currentMapEl.textContent = info.currentMap;
-      nextMapEl.innerHTML = `${info.nextMap} <span class="text-base font-medium text-gray-500 dark:text-gray-400">(at ${formatTime(info.nextMapStartTime)})</span>`;
-      
-      // Update the full schedule (which doesn't need second-by-second updates)
-      updateSchedule(info.currentMap, info.nextMap, info.timeRemainingMs);
-      
-      // Start the high-frequency timer for countdowns and progress bar
-      startSecondTimer(info);
-    }
-
-    /**
-     * Updates the list of upcoming maps.
-     */
-    function updateSchedule(currentMapName, nextMapName, timeRemainingMs) {
-        mapOverviewEl.innerHTML = "";
-        let cumulativeTimeMs = timeRemainingMs;
-
-        // Create a sorted list of upcoming maps
-        const currentMapIndex = rotation.indexOf(currentMapName);
-        const upcomingRotation = [];
-        for (let i = 1; i < rotation.length; i++) {
-            upcomingRotation.push(rotation[(currentMapIndex + i) % rotation.length]);
-        }
-
-        upcomingRotation.forEach(map => {
-            const li = document.createElement("li");
-            li.className = "flex justify-between items-center p-3 rounded-lg transition-colors duration-200";
-            if (map === nextMapName) {
-                li.classList.add("bg-indigo-50", "dark:bg-indigo-900/50");
-            }
-            const entryStartTime = new Date(Date.now() + cumulativeTimeMs);
-            const minutesUntil = Math.ceil(cumulativeTimeMs / 60000);
-
-            li.innerHTML = `
-                <span class="font-medium text-gray-700 dark:text-gray-300">${map}</span>
-                <span class="font-semibold text-gray-900 dark:text-white bg-gray-200 dark:bg-gray-700 px-3 py-1 rounded-lg text-sm">
-                  in ${minutesUntil} min <span class="font-normal text-gray-600 dark:text-gray-400">(${formatTime(entryStartTime)})</span>
-                </span>`;
-            mapOverviewEl.appendChild(li);
-            cumulativeTimeMs += MAP_DURATION_MS;
-        });
-    }
-
-    /**
-     * Starts the per-second timer for dynamic UI elements.
-     * @param {object} initialInfo - The initial rotation info.
-     */
-    function startSecondTimer(initialInfo) {
-      if (timerId) clearTimeout(timerId); // Clear any old timer
-
-      const mapEndTime = initialInfo.nextMapStartTime.getTime();
-
-      function tick() {
-        const now = Date.now();
-        const timeRemainingMs = mapEndTime - now;
-
-        if (timeRemainingMs <= 0) {
-          updateUI(); // Time for a new map, refresh everything
-          return;
-        }
-
-        const timeRemainingSeconds = Math.floor(timeRemainingMs / 1000);
-        
-        // --- PROGRESS BAR LOGIC ---
-        // Calculate time elapsed instead of time remaining for the progress bar
-        const timeIntoSlotMs = MAP_DURATION_MS - timeRemainingMs;
-        const progressPercentage = (timeIntoSlotMs / MAP_DURATION_MS) * 100;
-
-        // Update Progress Bar
-        progressBarEl.style.width = `${progressPercentage}%`;
-
-        // Update Page Title
-        document.title = `${initialInfo.currentMap} | ${formatTimeWithSeconds(timeRemainingSeconds)} left`;
-
-        // Schedule the next tick
-        timerId = setTimeout(tick, 1000);
-      }
-
-      tick(); // Start the timer loop
-    }
-
-    // --- INITIALIZATION ---
-    updateUI();
+    // --- KICK OFF THE APP ---
+    window.addEventListener('DOMContentLoaded', () => {
+        MapRotationViewer.init();
+    });
   </script>
 </body>
 </html>
